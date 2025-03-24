@@ -11,14 +11,14 @@ const app = express();
 const port = 5003;
 
 // MongoDB Atlas connection string
-const dbURI = "mongodb+srv://yashwanthk8:yashwanthk8@cluster0.mongodb.net/finyearpro?retryWrites=true&w=majority";
+const dbURI = "mongodb+srv://yashwanthk872:yashu2004@finalyearpro.yd8f7.mongodb.net/?retryWrites=true&w=majority&appName=finalYearPro";
 
 // Configure Cloudinary
 try {
     cloudinary.config({
-        cloud_name: "your_cloud_name",
-        api_key: "your_api_key",
-        api_secret: "your_api_secret"
+        cloud_name: "digpzlhky",
+        api_key: "271776781216447",
+        api_secret: "KYR1aKehe9L87zWaC3ulUIQ26xs"
     });
     console.log("Cloudinary configured successfully");
 } catch (error) {
