@@ -72,6 +72,15 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Root route to verify server is running
+app.get("/", (req, res) => {
+    res.json({
+        status: "success",
+        message: "Backend server is running",
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Get the directory name equivalent for ES modules
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
