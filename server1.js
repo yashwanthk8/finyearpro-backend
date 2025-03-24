@@ -5,26 +5,30 @@ import path from "path";
 import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
+import dotenv from "dotenv";
+
+// Load environment variables from .env file if present
+dotenv.config();
 
 // Initialize express app
 const app = express();
-const port = 5003;
+const port = process.env.PORT || 5003;
+
+// Log environment details for debugging
+console.log("Node environment:", process.env.NODE_ENV);
+console.log("Server starting on port:", port);
+console.log("Platform:", process.platform);
 
 // MongoDB Atlas connection string
-const dbURI = "mongodb+srv://yashwanthk872:yashu2004@finalyearpro.yd8f7.mongodb.net/?retryWrites=true&w=majority&appName=finalYearPro";
+const dbURI = process.env.MONGODB_URI || "mongodb+srv://yashwanthk872:yashu2004@finalyearpro.yd8f7.mongodb.net/?retryWrites=true&w=majority&appName=finalYearPro";
 
 // Configure Cloudinary
-try {
-    cloudinary.config({
-        cloud_name: "digpzlhky",
-        api_key: "271776781216447",
-        api_secret: "KYR1aKehe9L87zWaC3ulUIQ26xs"
-    });
-    console.log("Cloudinary configured successfully");
-} catch (error) {
-    console.error("Error configuring Cloudinary:", error);
-    throw error;
-}
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "digpzlhky",
+    api_key: process.env.CLOUDINARY_API_KEY || "271776781216447",
+    api_secret: process.env.CLOUDINARY_API_SECRET || "KYR1aKehe9L87zWaC3ulUIQ26xs"
+});
+console.log("Cloudinary configured");
 
 // MongoDB Connection with better error handling
 mongoose.connect(dbURI, { 
@@ -72,10 +76,25 @@ const fileUploadSchema = new mongoose.Schema({
 const FileUpload = mongoose.model('FileUpload', fileUploadSchema);
 
 // Enable CORS
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',') 
+    : ['https://dataanalyse.netlify.app', 'http://localhost:5173'];
+
 app.use(cors({
-    origin: '*', // Allow all origins
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) === -1) {
+            console.log('Allowed origin:', allowedOrigins);
+            console.log('Request origin:', origin);
+            return callback(null, true); // Allow all origins for now
+        }
+        return callback(null, true);
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
 
 // Middleware to parse incoming request bodies
@@ -99,121 +118,105 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'finyearpro',
-        allowed_formats: ['*'],
+        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx'],
         resource_type: 'auto'
     }
 });
 
+// Set up multer for handling file uploads
 const upload = multer({ 
-    storage,
+    storage: storage,
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
     }
 });
 
 // POST route to handle file upload and form submission
-app.post("/upload", upload.single("file"), async (req, res) => {
-    try {
-        console.log("Upload route hit");
-        console.log("Request body:", req.body);
-        console.log("Request file:", req.file);
-        console.log("Request headers:", req.headers);
-
-        const { username, email, phoneCode, phone } = req.body;
-
-        // Validate required fields
-        if (!username || !email || !phoneCode || !phone) {
-            console.log("Missing required fields");
-            return res.status(400).json({
-                success: false,
-                message: "Missing required fields",
-                receivedFields: { username, email, phoneCode, phone }
-            });
-        }
-
-        // Check if the file is uploaded
-        if (!req.file) {
-            console.log("No file uploaded");
-            return res.status(400).json({
-                success: false,
-                message: "No file uploaded"
-            });
-        }
-
-        // Validate file size (5MB limit)
-        if (req.file.size > 5 * 1024 * 1024) {
-            console.log("File too large");
-            return res.status(400).json({
-                success: false,
-                message: "File size exceeds 5MB limit"
-            });
-        }
-
-        // Prepare file data
-        const fileData = {
-            filename: req.file.filename,
-            url: req.file.path, // Cloudinary URL
-            size: req.file.size,
-            contentType: req.file.mimetype
-        };
-
-        console.log("Prepared file data:", fileData);
-
-        // Create a new document to store in MongoDB
-        const newFileUpload = new FileUpload({
-            username,
-            email,
-            phoneCode,
-            phone,
-            file: fileData,
-        });
-
-        // Save the data to MongoDB Atlas
-        await newFileUpload.save();
-        console.log("Data saved to MongoDB successfully");
-
-        const responseData = {
-            success: true,
-            message: "File uploaded and data saved successfully to MongoDB Atlas",
-            userDetails: { username, email, phoneCode, phone },
-            file: req.file,
-        };
-
-        console.log("Sending response:", responseData);
-        res.status(200).json(responseData);
-    } catch (error) {
-        console.error("Error in upload route:", error);
-        console.error("Error stack:", error.stack);
-        console.error("Error details:", {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-        });
-        
-        // Determine the error type and send appropriate response
-        let statusCode = 500;
-        let errorMessage = "Error processing upload";
-        
-        if (error.name === 'ValidationError') {
-            statusCode = 400;
-            errorMessage = "Validation error: " + error.message;
-        } else if (error.name === 'MongoError') {
-            statusCode = 500;
-            errorMessage = "Database error: " + error.message;
-        }
-        
-        res.status(statusCode).json({
-            success: false,
-            message: errorMessage,
-            error: error.message,
-            details: {
-                name: error.name,
-                code: error.code,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+app.post("/upload", (req, res) => {
+    // Use multer as middleware within the route
+    upload.single("file")(req, res, async function(err) {
+        try {
+            console.log("Upload route hit");
+            console.log("Request body:", req.body);
+            
+            // Check for multer errors
+            if (err) {
+                console.error("Multer error:", err);
+                return res.status(400).json({
+                    success: false,
+                    message: "File upload error",
+                    error: err.message
+                });
             }
-        });
-    }
+            
+            console.log("Request file:", req.file);
+            console.log("Request headers:", req.headers);
+
+            const { username, email, phoneCode, phone } = req.body;
+
+            // Validate required fields
+            if (!username || !email || !phoneCode || !phone) {
+                console.log("Missing required fields");
+                return res.status(400).json({
+                    success: false,
+                    message: "Missing required fields",
+                    receivedFields: { username, email, phoneCode, phone }
+                });
+            }
+
+            // Check if the file is uploaded
+            if (!req.file) {
+                console.log("No file uploaded");
+                return res.status(400).json({
+                    success: false,
+                    message: "No file uploaded"
+                });
+            }
+
+            // Prepare file data
+            const fileData = {
+                filename: req.file.filename || req.file.originalname,
+                url: req.file.path, // Cloudinary URL
+                size: req.file.size,
+                contentType: req.file.mimetype
+            };
+
+            console.log("Prepared file data:", fileData);
+
+            // Create a new document to store in MongoDB
+            const newFileUpload = new FileUpload({
+                username,
+                email,
+                phoneCode,
+                phone,
+                file: fileData,
+            });
+
+            // Save the data to MongoDB Atlas
+            await newFileUpload.save();
+            console.log("Data saved to MongoDB successfully");
+
+            const responseData = {
+                success: true,
+                message: "File uploaded and data saved successfully to MongoDB Atlas",
+                userDetails: { username, email, phoneCode, phone },
+                file: req.file,
+            };
+
+            console.log("Sending response:", responseData);
+            res.status(200).json(responseData);
+        } catch (error) {
+            console.error("Error in upload route:", error);
+            console.error("Error stack:", error.stack);
+            
+            // Return a clear error response
+            res.status(500).json({
+                success: false,
+                message: "Server error: " + error.message,
+                error: error.message
+            });
+        }
+    });
 });
 
 // GET route to retrieve all submissions
@@ -267,6 +270,7 @@ app.get("/download/:filename", async (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+app.listen(port, "0.0.0.0", () => {
+    console.log(`Server is running on port ${port}`);
+    console.log(`Server timestamp: ${new Date().toISOString()}`);
 });
