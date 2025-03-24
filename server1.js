@@ -56,7 +56,11 @@ const fileUploadSchema = new mongoose.Schema({
 const FileUpload = mongoose.model('FileUpload', fileUploadSchema);
 
 // Enable CORS
-app.use(cors());
+app.use(cors({
+    origin: '*', // Allow all origins
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware to parse incoming request bodies
 app.use(express.json());
@@ -79,33 +83,39 @@ const upload = multer({ storage });
 
 // POST route to handle file upload and form submission
 app.post("/upload", upload.single("file"), async (req, res) => {
-    const { username, email, phoneCode, phone } = req.body;
-
-    // Check if the file is uploaded
-    if (!req.file) {
-        return res.status(400).send("No file uploaded");
-    }
-
-    // Prepare file data
-    const fileData = {
-        filename: req.file.filename,
-        url: req.file.path, // Cloudinary URL
-        size: req.file.size,
-        contentType: req.file.mimetype // Save the file type
-    };
-
-    // Create a new document to store in MongoDB
-    const newFileUpload = new FileUpload({
-        username,
-        email,
-        phoneCode,
-        phone,
-        file: fileData,
-    });
-
     try {
+        const { username, email, phoneCode, phone } = req.body;
+        console.log("Received request body:", req.body);
+        console.log("Received file:", req.file);
+
+        // Check if the file is uploaded
+        if (!req.file) {
+            console.log("No file uploaded");
+            return res.status(400).send("No file uploaded");
+        }
+
+        // Prepare file data
+        const fileData = {
+            filename: req.file.filename,
+            url: req.file.path, // Cloudinary URL
+            size: req.file.size,
+            contentType: req.file.mimetype
+        };
+
+        console.log("Prepared file data:", fileData);
+
+        // Create a new document to store in MongoDB
+        const newFileUpload = new FileUpload({
+            username,
+            email,
+            phoneCode,
+            phone,
+            file: fileData,
+        });
+
         // Save the data to MongoDB Atlas
         await newFileUpload.save();
+        console.log("Data saved to MongoDB successfully");
 
         const responseData = {
             message: "File uploaded and data saved successfully to MongoDB Atlas",
@@ -113,23 +123,23 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             file: req.file,
         };
 
-        console.log("Received user details:", responseData.userDetails);
-        console.log("File details:", responseData.file);
-
+        console.log("Sending response:", responseData);
         res.status(200).send(responseData);
     } catch (error) {
-        console.error("Error saving to MongoDB Atlas:", error);
-        res.status(500).send("Error saving data to database");
+        console.error("Error in upload route:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error processing upload",
+            error: error.message
+        });
     }
 });
 
 // GET route to retrieve all submissions
 app.get("/submissions", async (req, res) => {
     try {
-        // Fetch all documents from FileUpload collection
         const submissions = await FileUpload.find({})
-            .select('-file.url') // Exclude file URL for security
-            .sort({ createdAt: -1 }); // Sort by creation date, newest first
+            .sort({ createdAt: -1 });
         
         res.status(200).json({
             success: true,
