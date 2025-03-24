@@ -5,10 +5,14 @@ import path from "path";
 import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
 
 // Initialize express app
 const app = express();
-const port = 5003;
+const port = process.env.PORT || 5003;
 
 // MongoDB Atlas connection string
 // To set up MongoDB Atlas:
@@ -18,13 +22,13 @@ const port = 5003;
 // 4. Choose Node.js as your driver and copy the connection string
 // 5. Replace <username>, <password>, <cluster-url>, and <database-name> with your actual credentials
 // Example: mongodb+srv://myuser:mypassword@cluster0.mongodb.net/finyearpro?retryWrites=true&w=majority
-const dbURI = "mongodb+srv://yashwanthk872:yashu2004@finalyearpro.yd8f7.mongodb.net/?retryWrites=true&w=majority&appName=finalYearPro"; 
+const dbURI = process.env.MONGODB_URI; 
 
 // Configure Cloudinary
 cloudinary.config({
-    cloud_name: "digpzlhky",
-    api_key: "271776781216447",
-    api_secret: "KYR1aKehe9L87zWaC3ulUIQ26xs"
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 mongoose.connect(dbURI, { 
