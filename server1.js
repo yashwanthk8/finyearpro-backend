@@ -11,14 +11,14 @@ const app = express();
 const port = 5003;
 
 // MongoDB Atlas connection string
-const dbURI = "mongodb+srv://yashwanthk8:yashu2004@cluster0.mongodb.net/finyearpro?retryWrites=true&w=majority";
+const dbURI = "mongodb+srv://yashwanthk8:yashwanthk8@cluster0.mongodb.net/finyearpro?retryWrites=true&w=majority";
 
 // Configure Cloudinary
 try {
     cloudinary.config({
-        cloud_name: "digpzlhky",
-        api_key: "271776781216447",
-        api_secret: "KYR1aKehe9L87zWaC3ulUIQ26xs"
+        cloud_name: "your_cloud_name",
+        api_key: "your_api_key",
+        api_secret: "your_api_secret"
     });
     console.log("Cloudinary configured successfully");
 } catch (error) {
@@ -26,13 +26,34 @@ try {
     throw error;
 }
 
+// MongoDB Connection with better error handling
 mongoose.connect(dbURI, { 
     useNewUrlParser: true, 
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000 // 5 seconds timeout for server selection
 })
-    .then(() => console.log("MongoDB Atlas connected successfully"))
-    .catch((err) => console.error("Error connecting to MongoDB Atlas:", err));
+    .then(() => {
+        console.log("MongoDB Atlas connected successfully");
+        console.log("Database URI:", dbURI.replace(/\/\/[^:]+:[^@]+@/, '//****:****@')); // Log URI without credentials
+    })
+    .catch((err) => {
+        console.error("Error connecting to MongoDB Atlas:", err);
+        console.error("Connection error details:", {
+            name: err.name,
+            message: err.message,
+            code: err.code
+        });
+        process.exit(1); // Exit the process if database connection fails
+    });
+
+// Add error handler for MongoDB connection
+mongoose.connection.on('error', err => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
 
 // MongoDB Schema for File Uploads
 const fileUploadSchema = new mongoose.Schema({
@@ -90,7 +111,6 @@ const upload = multer({
     }
 });
 
-// POST route to handle file upload and form submission
 // POST route to handle file upload and form submission
 app.post("/upload", upload.single("file"), async (req, res) => {
     try {
@@ -164,6 +184,12 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     } catch (error) {
         console.error("Error in upload route:", error);
         console.error("Error stack:", error.stack);
+        console.error("Error details:", {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+        });
         
         // Determine the error type and send appropriate response
         let statusCode = 500;
@@ -181,7 +207,11 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             success: false,
             message: errorMessage,
             error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            details: {
+                name: error.name,
+                code: error.code,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            }
         });
     }
 });
