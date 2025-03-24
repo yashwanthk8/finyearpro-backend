@@ -117,28 +117,28 @@ const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
-        // Get the resource type based on file extension
+        // Always use 'raw' resource type for Excel and CSV files
+        // Use 'auto' for everything else
         let resourceType = 'auto';
         
         if (file.originalname) {
-            if (file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+            const extension = file.originalname.split('.').pop().toLowerCase();
+            console.log(`File extension: ${extension}`);
+            
+            // For Excel, CSV and other document files
+            if (['xlsx', 'xls', 'csv', 'doc', 'docx', 'txt'].includes(extension)) {
                 resourceType = 'raw';
-                console.log("Using raw resource type for Excel file");
-            } else if (file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                resourceType = 'image';
-                console.log("Using image resource type for image file");
-            } else if (file.originalname.match(/\.(pdf|doc|docx)$/i)) {
-                resourceType = 'auto';
-                console.log("Using auto resource type for document file");
+                console.log(`Setting resource_type to 'raw' for ${extension} file`);
             }
         }
         
-        console.log(`File ${file.originalname} assigned resource type: ${resourceType}`);
+        console.log(`File ${file.originalname} using resource_type: ${resourceType}`);
         
         return {
             folder: 'finyearpro',
-            allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv'],
-            resource_type: resourceType
+            resource_type: resourceType,
+            // Remove allowed_formats to accept ANY file type
+            format: 'auto' // Let Cloudinary determine format
         };
     }
 });
@@ -163,7 +163,12 @@ app.post("/upload", (req, res) => {
             
             // Check for multer errors
             if (err) {
-                console.error("Multer error:", err);
+                console.error("Multer error details:", {
+                    message: err.message,
+                    code: err.code,
+                    field: err.field,
+                    storageErrors: err.storageErrors,
+                });
                 return res.status(400).json({
                     success: false,
                     message: "File upload error: " + err.message,
@@ -175,10 +180,11 @@ app.post("/upload", (req, res) => {
             if (req.file) {
                 console.log("Uploaded file details:", {
                     originalname: req.file.originalname,
-                    filename: req.file.filename,
+                    filename: req.file.filename || req.file.originalname,
                     mimetype: req.file.mimetype,
                     size: req.file.size,
-                    path: req.file.path
+                    path: req.file.path,
+                    extension: req.file.originalname.split('.').pop()
                 });
             } else {
                 console.log("No file in request");
@@ -205,23 +211,30 @@ app.post("/upload", (req, res) => {
                 });
             }
 
-            // Process the file based on its content type
+            // Get file extension
+            const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+            console.log("File extension:", fileExtension);
+            
+            // Handle file URL based on type
             let fileUrl = req.file.path;
             
-            // Handle Excel files specifically
-            if (req.file.mimetype.includes('excel') || 
-                req.file.mimetype.includes('spreadsheet') || 
-                req.file.originalname.endsWith('.xlsx') || 
-                req.file.originalname.endsWith('.xls')) {
-                console.log("Processing Excel file");
+            // Special handling for Excel and CSV files - ensure correct URL structure
+            if (['xlsx', 'xls', 'csv'].includes(fileExtension)) {
+                console.log("Processing Excel/CSV file");
+                
+                // For raw files, ensure URL has /raw/ instead of /image/
+                if (fileUrl.includes('/image/upload/')) {
+                    fileUrl = fileUrl.replace('/image/upload/', '/raw/upload/');
+                    console.log("Corrected raw file URL:", fileUrl);
+                }
             }
 
             // Prepare file data
             const fileData = {
-                filename: req.file.filename || req.file.originalname,
-                url: fileUrl, // Cloudinary URL
+                filename: req.file.originalname,
+                url: fileUrl,
                 size: req.file.size,
-                contentType: req.file.mimetype
+                contentType: req.file.mimetype || `application/${fileExtension}`
             };
 
             console.log("Prepared file data:", fileData);
@@ -247,7 +260,7 @@ app.post("/upload", (req, res) => {
                     filename: req.file.originalname,
                     url: fileUrl,
                     size: req.file.size,
-                    type: req.file.mimetype
+                    type: req.file.mimetype || `application/${fileExtension}`
                 }
             };
 
