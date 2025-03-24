@@ -113,13 +113,33 @@ app.get("/", (req, res) => {
 // Get the directory name equivalent for ES modules
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-// Set up multer storage for Cloudinary
+// Set up multer storage for Cloudinary with custom resource type handling
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'finyearpro',
-        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx'],
-        resource_type: 'auto'
+    params: async (req, file) => {
+        // Get the resource type based on file extension
+        let resourceType = 'auto';
+        
+        if (file.originalname) {
+            if (file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+                resourceType = 'raw';
+                console.log("Using raw resource type for Excel file");
+            } else if (file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                resourceType = 'image';
+                console.log("Using image resource type for image file");
+            } else if (file.originalname.match(/\.(pdf|doc|docx)$/i)) {
+                resourceType = 'auto';
+                console.log("Using auto resource type for document file");
+            }
+        }
+        
+        console.log(`File ${file.originalname} assigned resource type: ${resourceType}`);
+        
+        return {
+            folder: 'finyearpro',
+            allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv'],
+            resource_type: resourceType
+        };
     }
 });
 
@@ -127,30 +147,42 @@ const storage = new CloudinaryStorage({
 const upload = multer({ 
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 10 * 1024 * 1024 // Increase to 10MB limit
     }
 });
 
 // POST route to handle file upload and form submission
 app.post("/upload", (req, res) => {
+    console.log("Upload request received");
+    
     // Use multer as middleware within the route
     upload.single("file")(req, res, async function(err) {
         try {
-            console.log("Upload route hit");
-            console.log("Request body:", req.body);
+            console.log("Upload route processing");
+            console.log("Request body keys:", Object.keys(req.body));
             
             // Check for multer errors
             if (err) {
                 console.error("Multer error:", err);
                 return res.status(400).json({
                     success: false,
-                    message: "File upload error",
+                    message: "File upload error: " + err.message,
                     error: err.message
                 });
             }
             
-            console.log("Request file:", req.file);
-            console.log("Request headers:", req.headers);
+            // Log file details if present
+            if (req.file) {
+                console.log("Uploaded file details:", {
+                    originalname: req.file.originalname,
+                    filename: req.file.filename,
+                    mimetype: req.file.mimetype,
+                    size: req.file.size,
+                    path: req.file.path
+                });
+            } else {
+                console.log("No file in request");
+            }
 
             const { username, email, phoneCode, phone } = req.body;
 
@@ -173,10 +205,21 @@ app.post("/upload", (req, res) => {
                 });
             }
 
+            // Process the file based on its content type
+            let fileUrl = req.file.path;
+            
+            // Handle Excel files specifically
+            if (req.file.mimetype.includes('excel') || 
+                req.file.mimetype.includes('spreadsheet') || 
+                req.file.originalname.endsWith('.xlsx') || 
+                req.file.originalname.endsWith('.xls')) {
+                console.log("Processing Excel file");
+            }
+
             // Prepare file data
             const fileData = {
                 filename: req.file.filename || req.file.originalname,
-                url: req.file.path, // Cloudinary URL
+                url: fileUrl, // Cloudinary URL
                 size: req.file.size,
                 contentType: req.file.mimetype
             };
@@ -200,10 +243,15 @@ app.post("/upload", (req, res) => {
                 success: true,
                 message: "File uploaded and data saved successfully to MongoDB Atlas",
                 userDetails: { username, email, phoneCode, phone },
-                file: req.file,
+                file: {
+                    filename: req.file.originalname,
+                    url: fileUrl,
+                    size: req.file.size,
+                    type: req.file.mimetype
+                }
             };
 
-            console.log("Sending response:", responseData);
+            console.log("Sending success response");
             res.status(200).json(responseData);
         } catch (error) {
             console.error("Error in upload route:", error);
@@ -269,17 +317,44 @@ app.get("/download/:filename", async (req, res) => {
     }
 });
 
-// GET route to test Cloudinary URL
+// Add a test endpoint for Cloudinary Excel upload
 app.get("/test-cloudinary", (req, res) => {
-    const sampleUrl = "https://res.cloudinary.com/digpzlhky/image/upload/v1742814840/finyearpro/rmcwrn7cs3ui1zulizqi.pdf";
+    const samplePdfUrl = "https://res.cloudinary.com/digpzlhky/image/upload/v1742814840/finyearpro/rmcwrn7cs3ui1zulizqi.pdf";
+    const sampleExcelUrl = "https://res.cloudinary.com/digpzlhky/raw/upload/v1742814840/finyearpro/sample.xlsx";
     
     res.json({
-        message: "To view or download the file, click on this URL directly",
-        url: sampleUrl,
-        instructions: "For PDFs, try adding '/fl_attachment' before the version to force download: " + 
-            sampleUrl.replace("/upload/", "/upload/fl_attachment/")
+        message: "Cloudinary URLs for testing",
+        pdfUrl: {
+            view: samplePdfUrl,
+            download: samplePdfUrl.replace("/upload/", "/upload/fl_attachment/")
+        },
+        excelUrl: {
+            view: sampleExcelUrl,
+            download: sampleExcelUrl.replace("/upload/", "/upload/fl_attachment/")
+        },
+        note: "For Excel files, we use raw/upload instead of image/upload in the URL"
     });
 });
+
+// Helper function to determine the resource type based on file extension
+const getResourceType = (filename) => {
+    if (!filename) return 'auto';
+    
+    const extension = filename.split('.').pop().toLowerCase();
+    
+    // Use 'raw' for office documents and other raw files
+    if (['xlsx', 'xls', 'csv', 'doc', 'docx', 'ppt', 'pptx', 'txt'].includes(extension)) {
+        return 'raw';
+    }
+    
+    // Use 'image' for images
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension)) {
+        return 'image';
+    }
+    
+    // Default to auto for everything else
+    return 'auto';
+};
 
 // Start the server
 app.listen(port, "0.0.0.0", () => {
