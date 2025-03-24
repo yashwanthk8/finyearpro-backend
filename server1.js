@@ -25,11 +25,17 @@ const port = process.env.PORT || 5003;
 const dbURI = process.env.MONGODB_URI; 
 
 // Configure Cloudinary
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-});
+try {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    console.log("Cloudinary configured successfully");
+} catch (error) {
+    console.error("Error configuring Cloudinary:", error);
+    throw error;
+}
 
 mongoose.connect(dbURI, { 
     useNewUrlParser: true, 
@@ -79,19 +85,40 @@ const storage = new CloudinaryStorage({
     }
 });
 
-const upload = multer({ storage });
+const upload = multer({ 
+    storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    }
+});
 
 // POST route to handle file upload and form submission
 app.post("/upload", upload.single("file"), async (req, res) => {
     try {
+        console.log("Upload route hit");
+        console.log("Request body:", req.body);
+        console.log("Request file:", req.file);
+        console.log("Request headers:", req.headers);
+
         const { username, email, phoneCode, phone } = req.body;
-        console.log("Received request body:", req.body);
-        console.log("Received file:", req.file);
+
+        // Validate required fields
+        if (!username || !email || !phoneCode || !phone) {
+            console.log("Missing required fields");
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields",
+                receivedFields: { username, email, phoneCode, phone }
+            });
+        }
 
         // Check if the file is uploaded
         if (!req.file) {
             console.log("No file uploaded");
-            return res.status(400).send("No file uploaded");
+            return res.status(400).json({
+                success: false,
+                message: "No file uploaded"
+            });
         }
 
         // Prepare file data
@@ -118,19 +145,22 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         console.log("Data saved to MongoDB successfully");
 
         const responseData = {
+            success: true,
             message: "File uploaded and data saved successfully to MongoDB Atlas",
             userDetails: { username, email, phoneCode, phone },
             file: req.file,
         };
 
         console.log("Sending response:", responseData);
-        res.status(200).send(responseData);
+        res.status(200).json(responseData);
     } catch (error) {
         console.error("Error in upload route:", error);
+        console.error("Error stack:", error.stack);
         res.status(500).json({
             success: false,
             message: "Error processing upload",
-            error: error.message
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
