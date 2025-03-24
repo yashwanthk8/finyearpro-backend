@@ -102,6 +102,7 @@ const upload = multer({
 });
 
 // POST route to handle file upload and form submission
+// POST route to handle file upload and form submission
 app.post("/upload", upload.single("file"), async (req, res) => {
     try {
         console.log("Upload route hit");
@@ -127,6 +128,15 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "No file uploaded"
+            });
+        }
+
+        // Validate file size (5MB limit)
+        if (req.file.size > 5 * 1024 * 1024) {
+            console.log("File too large");
+            return res.status(400).json({
+                success: false,
+                message: "File size exceeds 5MB limit"
             });
         }
 
@@ -165,9 +175,22 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     } catch (error) {
         console.error("Error in upload route:", error);
         console.error("Error stack:", error.stack);
-        res.status(500).json({
+        
+        // Determine the error type and send appropriate response
+        let statusCode = 500;
+        let errorMessage = "Error processing upload";
+        
+        if (error.name === 'ValidationError') {
+            statusCode = 400;
+            errorMessage = "Validation error: " + error.message;
+        } else if (error.name === 'MongoError') {
+            statusCode = 500;
+            errorMessage = "Database error: " + error.message;
+        }
+        
+        res.status(statusCode).json({
             success: false,
-            message: "Error processing upload",
+            message: errorMessage,
             error: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
