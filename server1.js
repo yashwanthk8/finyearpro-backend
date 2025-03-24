@@ -269,6 +269,18 @@ app.get("/download/:filename", async (req, res) => {
     }
 });
 
+// GET route to test Cloudinary URL
+app.get("/test-cloudinary", (req, res) => {
+    const sampleUrl = "https://res.cloudinary.com/digpzlhky/image/upload/v1742814840/finyearpro/rmcwrn7cs3ui1zulizqi.pdf";
+    
+    res.json({
+        message: "To view or download the file, click on this URL directly",
+        url: sampleUrl,
+        instructions: "For PDFs, try adding '/fl_attachment' before the version to force download: " + 
+            sampleUrl.replace("/upload/", "/upload/fl_attachment/")
+    });
+});
+
 // Start the server
 app.listen(port, "0.0.0.0", () => {
     console.log(`Server is running on port ${port}`);
