@@ -69,7 +69,8 @@ const fileUploadSchema = new mongoose.Schema({
         filename: { type: String, required: true },
         url: { type: String, required: true },
         size: { type: Number, required: true },
-        contentType: { type: String, required: true } // Added to store file type
+        contentType: { type: String, required: true },
+        extension: { type: String, required: false } // Not required for backward compatibility
     },
 }, { timestamps: true });
 
@@ -117,6 +118,10 @@ const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
+        // Get file extension
+        const originalExtension = file.originalname.split('.').pop().toLowerCase();
+        console.log(`Original file extension: ${originalExtension}`);
+        
         // Always use 'raw' resource type for Excel and CSV files
         // Use 'auto' for everything else
         let resourceType = 'auto';
@@ -138,7 +143,10 @@ const storage = new CloudinaryStorage({
             folder: 'finyearpro',
             resource_type: resourceType,
             // Remove allowed_formats to accept ANY file type
-            format: 'auto' // Let Cloudinary determine format
+            format: '', // Keep original format instead of auto-converting
+            public_id: `${Date.now()}_${path.parse(file.originalname).name}`, // Use original filename without extension
+            use_filename: true, // Use the original filename in the Cloudinary URL
+            unique_filename: true
         };
     }
 });
@@ -211,30 +219,38 @@ app.post("/upload", (req, res) => {
                 });
             }
 
-            // Get file extension
+            // Get file extension and original filename
             const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+            const originalFilename = req.file.originalname;
             console.log("File extension:", fileExtension);
             
             // Handle file URL based on type
             let fileUrl = req.file.path;
             
-            // Special handling for Excel and CSV files - ensure correct URL structure
-            if (['xlsx', 'xls', 'csv'].includes(fileExtension)) {
-                console.log("Processing Excel/CSV file");
+            // Check if the URL is missing the extension
+            if (!fileUrl.endsWith(`.${fileExtension}`)) {
+                // Fix for Cloudinary sometimes removing extensions
+                console.log("Original URL:", fileUrl);
                 
-                // For raw files, ensure URL has /raw/ instead of /image/
-                if (fileUrl.includes('/image/upload/')) {
-                    fileUrl = fileUrl.replace('/image/upload/', '/raw/upload/');
-                    console.log("Corrected raw file URL:", fileUrl);
+                // Special handling for Excel and CSV files - ensure correct URL structure
+                if (['xlsx', 'xls', 'csv'].includes(fileExtension)) {
+                    // For raw files, ensure URL has /raw/ instead of /image/
+                    if (fileUrl.includes('/image/upload/')) {
+                        fileUrl = fileUrl.replace('/image/upload/', '/raw/upload/');
+                    }
                 }
+                
+                // Save the URL with explicit extension to make it easier to download
+                console.log("Processed URL:", fileUrl);
             }
 
-            // Prepare file data
+            // Prepare file data with original filename for proper identification
             const fileData = {
-                filename: req.file.originalname,
+                filename: originalFilename, // Store original filename with extension
                 url: fileUrl,
                 size: req.file.size,
-                contentType: req.file.mimetype || `application/${fileExtension}`
+                contentType: req.file.mimetype || `application/${fileExtension}`,
+                extension: fileExtension // Store extension separately
             };
 
             console.log("Prepared file data:", fileData);
@@ -257,10 +273,11 @@ app.post("/upload", (req, res) => {
                 message: "File uploaded and data saved successfully to MongoDB Atlas",
                 userDetails: { username, email, phoneCode, phone },
                 file: {
-                    filename: req.file.originalname,
+                    filename: originalFilename,
                     url: fileUrl,
                     size: req.file.size,
-                    type: req.file.mimetype || `application/${fileExtension}`
+                    type: req.file.mimetype || `application/${fileExtension}`,
+                    extension: fileExtension
                 }
             };
 
